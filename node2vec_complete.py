@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from collections import defaultdict
+import matplotlib.pyplot as plt
 
 class Node2VecComplete(nn.Module):
     def __init__(self, num_nodes, embedding_dim):
@@ -14,11 +15,11 @@ class Node2VecComplete(nn.Module):
         self.num_nodes = num_nodes
         self.embedding_dim = embedding_dim
         
-        # Раздельные эмбеддинги для центральных и контекстных узлов
+        # раздельные эмбеддинги для центральных и контекстных узлов
         self.center_embeddings = nn.Embedding(num_nodes, embedding_dim)
         self.context_embeddings = nn.Embedding(num_nodes, embedding_dim)
         
-        # Инициализация по схеме Word2Vec
+        # инициализация по схеме Word2Vec
         init_range = 1.0 / embedding_dim
         self.center_embeddings.weight.data.uniform_(-init_range, init_range)
         self.context_embeddings.weight.data.uniform_(-init_range, init_range)
@@ -31,11 +32,11 @@ class Node2VecComplete(nn.Module):
         return center_embeds, context_embeds, negative_embeds
 
     def compute_loss(self, center_embeds, context_embeds, negative_embeds):
-        # Положительные примеры
+        # положительные примеры
         positive_scores = torch.sum(center_embeds * context_embeds, dim=1)
         positive_loss = F.logsigmoid(positive_scores)
         
-        # Отрицательные примеры
+        # отрицательные примеры
         negative_scores = torch.bmm(negative_embeds, center_embeds.unsqueeze(2))
         negative_scores = negative_scores.squeeze(2)
         negative_loss = F.logsigmoid(-negative_scores).sum(dim=1)
@@ -56,7 +57,7 @@ class CompleteNode2Vec:
         self.p = p
         self.q = q
         
-        # Создаем mapping узлов
+        #  mapping узлов
         self.nodes = list(G.nodes())
         self.node_to_idx = {node: idx for idx, node in enumerate(self.nodes)}
         self.idx_to_node = {idx: node for node, idx in self.node_to_idx.items()}
@@ -64,12 +65,11 @@ class CompleteNode2Vec:
         
         print(f"Инициализирован CompleteNode2Vec для графа с {self.num_nodes} узлами")
         
-        # Предвычисляем вероятности переходов с учетом весов
+        # вероятности переходов с учетом весов
         self.alias_nodes = {}
         self.precompute_transition_probs()
 
     def precompute_transition_probs(self):
-        """Предвычисление вероятностей переходов с учетом весов ребер"""
         print("Предвычисление вероятностей переходов...")
         
         successful_nodes = 0
@@ -80,17 +80,17 @@ class CompleteNode2Vec:
                     self.alias_nodes[node] = None
                     continue
                 
-                # Получаем веса ребер с обработкой ошибок
+                # получаем веса ребер с обработкой ошибок
                 weights = []
                 for neighbor in neighbors:
                     try:
                         weight = self.G[node][neighbor].get('weight', 1.0)
                         weights.append(weight)
                     except KeyError:
-                        # Если ребра нет, используем вес по умолчанию
+                        # если ребра нет, используем вес по умолчанию
                         weights.append(1.0)
                 
-                # Нормализация весов для вероятностей
+                # нормализация весов для вероятностей
                 total_weight = sum(weights)
                 if total_weight > 0:
                     normalized_probs = [w / total_weight for w in weights]
@@ -165,7 +165,7 @@ class CompleteNode2Vec:
                     break
                     
                 if len(walk) == 1:
-                    # Первый шаг - сэмплирование по весам
+                    # первый шаг - сэмплирование по весам
                     if self.alias_nodes.get(cur) is not None:
                         alias_table = self.alias_nodes[cur]
                         if alias_table is not None:
@@ -212,7 +212,7 @@ class CompleteNode2Vec:
                     else:
                         unnormalized_probs.append(weight / self.q)
                 except KeyError:
-                    # Если ребра нет, используем вес по умолчанию
+                    # если ребра нет, используем вес по умолчанию
                     unnormalized_probs.append(1.0)
             
             total = sum(unnormalized_probs)
@@ -221,7 +221,7 @@ class CompleteNode2Vec:
                 
             normalized_probs = [p / total for p in unnormalized_probs]
             
-            # Сэмплирование с использованием alias method
+            # сэмплирование с использованием alias method
             if self.alias_nodes.get(cur) is not None:
                 temp_alias_table = self.create_alias_table(normalized_probs)
                 if temp_alias_table is not None:
@@ -252,7 +252,7 @@ class CompleteNode2Vec:
                     if len(walk) > 1:
                         walk_indices = [self.node_to_idx[node] for node in walk]
                         
-                        # Создание пар (center, context) для Skip-gram
+                        # создание пар (center, context) для Skip-gram
                         for i, center_idx in enumerate(walk_indices):
                             start = max(0, i - self.window_size)
                             end = min(len(walk_indices), i + self.window_size + 1)
@@ -260,18 +260,18 @@ class CompleteNode2Vec:
                             for j in range(start, end):
                                 if j != i:
                                     context_idx = walk_indices[j]
-                                    # Учитываем вес связи при создании multiple примеров
+                                    # учитываем вес связи при создании multiple примеров
                                     try:
                                         center_node = self.idx_to_node[center_idx]
                                         context_node = self.idx_to_node[context_idx]
                                         weight = self.G[center_node][context_node].get('weight', 1.0)
                                         
-                                        # Создаем больше примеров для связей с большим весом
+                                        # создаем больше примеров для связей с большим весом
                                         num_examples = max(1, int(weight))
                                         for _ in range(num_examples):
                                             all_pairs.append((center_idx, context_idx))
                                     except:
-                                        # Если есть ошибка, добавляем один пример
+                                        # если есть ошибка, добавляем один пример
                                         all_pairs.append((center_idx, context_idx))
                         
                         successful_walks += 1
@@ -286,18 +286,18 @@ class CompleteNode2Vec:
         """Обучение модели с мониторингом прогресса"""
         print("Начало обучения CompleteNode2Vec...")
         
-        # Генерация тренировочных данных
+        # генерация тренировочных данных
         training_pairs = self.generate_training_data()
         
         if not training_pairs:
             print("Ошибка: не удалось сгенерировать тренировочные данные")
             return {}
         
-        # Инициализация модели
+        # инициализация модели
         model = Node2VecComplete(self.num_nodes, self.dimensions).to(device)
         optimizer = optim.Adam(model.parameters(), lr=learning_rate)
         
-        # Подготовка данных
+        # подготовка данных
         try:
             center_nodes = torch.tensor([pair[0] for pair in training_pairs], dtype=torch.long).to(device)
             context_nodes = torch.tensor([pair[1] for pair in training_pairs], dtype=torch.long).to(device)
@@ -305,7 +305,6 @@ class CompleteNode2Vec:
             print(f"Ошибка при подготовке данных: {e}")
             return {}
 
-        # Обучение
         model.train()
         losses = []
         
@@ -313,7 +312,7 @@ class CompleteNode2Vec:
             total_loss = 0
             num_batches = 0
             
-            # Случайное перемешивание данных
+            # случайное перемешивание данных
             indices = torch.randperm(len(center_nodes))
             
             for i in range(0, len(indices), batch_size):
@@ -323,14 +322,14 @@ class CompleteNode2Vec:
                     batch_center = center_nodes[batch_indices]
                     batch_context = context_nodes[batch_indices]
                     
-                    # Генерация отрицательных примеров
+                    # генерация отрицательных примеров
                     batch_negative = torch.randint(0, self.num_nodes, 
                                                  (len(batch_center), self.num_negatives)).to(device)
                     
                     # Forward pass
                     center_emb, context_emb, negative_emb = model(batch_center, batch_context, batch_negative)
                     
-                    # Вычисление loss
+                    # loss
                     loss = model.compute_loss(center_emb, context_emb, negative_emb)
                     
                     # Backward pass
@@ -348,8 +347,7 @@ class CompleteNode2Vec:
             losses.append(avg_loss)
             print(f"Эпоха {epoch+1}/{epochs}, Средний Loss: {avg_loss:.4f}")
         
-        # Визуализация процесса обучения
-        import matplotlib.pyplot as plt
+        
         plt.figure(figsize=(10, 4))
         plt.plot(range(1, epochs + 1), losses, marker='o', linewidth=2)
         plt.xlabel('Эпоха')
@@ -358,7 +356,7 @@ class CompleteNode2Vec:
         plt.grid(True, alpha=0.3)
         plt.show()
         
-        # Извлечение финальных эмбеддингов
+        # извлечение финальных эмбеддингов
         embeddings = {}
         with torch.no_grad():
             all_embeddings = model.center_embeddings.weight.cpu().numpy()
